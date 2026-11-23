@@ -6,7 +6,7 @@ services:
     container_name: mysql_container
     environment:
       MYSQL_ROOT_PASSWORD: 12345678
-      MYSQL_DATABASE: function_calls
+      MYSQL_DATABASE: subjects_kg
       MYSQL_USER: vincent
       MYSQL_PASSWORD: 123456
     ports:

@@ -12,11 +12,14 @@ load_dotenv(os.path.join(PROJECT_ROOT, '.env'))
 
 class Config:
     # 初始化配置，加载 config.ini 文件
-    def __init__(self, config_file=r"D:\Dev-Cpp\python-pycharm\Itcast_qa_system\config.ini"):
+    # 默认读取项目根目录下的 config.ini，也可通过环境变量 CONFIG_FILE 指定路径
+    def __init__(self, config_file=None):
+        if config_file is None:
+            config_file = os.getenv("CONFIG_FILE") or os.path.join(PROJECT_ROOT, "config.ini")
         # 创建配置解析器
         self.config = configparser.ConfigParser()
         # 读取配置文件
-        self.config.read(config_file,encoding="utf-8")  # windows包gbk错误，增加encoding=utf-8
+        self.config.read(config_file, encoding="utf-8")  # windows包gbk错误，增加encoding=utf-8
 
         # MySQL 配置
         # MySQL 主机地址
@@ -78,14 +81,15 @@ class Config:
             self.config.get('app', 'valid_sources', fallback='["ai", "java", "test", "ops", "bigdata"]'))
         # 客服电话
         self.CUSTOMER_SERVICE_PHONE = self.config.get('app', 'customer_service_phone', fallback='12345678')
-        # 日志文件路径
+        # 日志文件路径（配置为相对路径时，基于项目根目录）
         self.LOG_FILE = self.config.get('logger', 'log_file', fallback='logs/app.log')
+        if not os.path.isabs(self.LOG_FILE):
+            self.LOG_FILE = os.path.join(PROJECT_ROOT, self.LOG_FILE)
 
-        # model path
-        # self.bge_m3 = "/Users/chan/projects/Itcast_qa_system/rag_qa/models/bge-m3"
-        # self.bge_reranker = "/Users/chan/projects/Itcast_qa_system/rag_qa/models/bge-reranker-large"
-        self.nlp_bert_doc_seg = r"D:\Dev-Cpp\python-pycharm\Itcast_qa_system\rag_qa\models\nlp_bert_document-segmentation_chinese-base"
-        self.bert_intent_cls = r"D:\Dev-Cpp\python-pycharm\Itcast_qa_system\rag_qa\core\bert_query_classifier"
+        # 本地模型路径（全部基于项目根目录，换机器无需改代码）
+        self.nlp_bert_doc_seg = os.path.join(
+            PROJECT_ROOT, 'rag_qa', 'models', 'nlp_bert_document-segmentation_chinese-base')
+        self.bert_intent_cls = os.path.join(PROJECT_ROOT, 'rag_qa', 'core', 'bert_query_classifier')
 
 
 if __name__ == '__main__':

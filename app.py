@@ -108,15 +108,6 @@ async def clear_history(session_id: str):
 
 # 检查是否为日常问候用语并返回模板回复
 def check_greeting(query: str) -> Optional[str]:
-    query_text = query[1:].strip()  # 去除 # 前缀
-    for pattern_info in GREETING_PATTERNS:
-        if re.match(pattern_info["pattern"], query_text, re.IGNORECASE):
-            return pattern_info["response"]
-    return None
-
-
-# 检查是否为日常问候用语并返回模板回复
-def check_greeting(query: str) -> Optional[str]:
     query_text = query.strip()
     for pattern_info in GREETING_PATTERNS:
         if re.match(pattern_info["pattern"], query_text, re.IGNORECASE):
@@ -200,7 +191,8 @@ async def websocket_endpoint(websocket: WebSocket):
                         "is_complete": True,
                         "processing_time": time.time() - start_time
                     })
-                break
+                # 问候语处理完成后继续等待该连接的下一条消息，而不是断开 WebSocket
+                continue
 
             # 调用QA系统进行查询，流式返回结果
             collected_answer = ""

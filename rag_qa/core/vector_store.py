@@ -323,7 +323,7 @@ class VectorStore:
 
 if __name__ == "__main__":
     vector_store = VectorStore()  # 建表
-    directory_path = r'D:\Dev-Cpp\python-pycharm\Itcast_qa_system\rag_qa\data\ai_data'
+    directory_path = os.path.join(project_root, 'rag_qa', 'data', 'ai_data')
     print(f"embedding_function.dim--》{vector_store.embedding_function.dim}")
     documents = process_documents(directory_path)  # 文档读取与切块
     vector_store.add_documents(documents)  # 子块编码并且写入Milvus

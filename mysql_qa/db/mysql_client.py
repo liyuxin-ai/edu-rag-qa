@@ -119,6 +119,9 @@ class MySQLClient:
 
 
 if __name__ == '__main__':
+    import os
+    # 初始化数据表并导入种子问答数据（路径基于本文件，换机器可直接运行）
+    csv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'JP学科知识问答.csv')
     mysql_client = MySQLClient()
     mysql_client.create_table()
-    mysql_client.insert_data('../data/JP学科知识问答.csv')
+    mysql_client.insert_data(csv_path)
