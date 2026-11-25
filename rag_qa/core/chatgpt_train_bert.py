@@ -182,7 +182,7 @@ class BertClassifier:
 # 主函数
 # =========================
 if __name__ == "__main__":
-    model_path = "/Users/chan/projects/models/bert-base-chinese"
+    model_path = "./models/bert-base-chinese"  # 按需修改为本地权重路径
 
     classifier = BertClassifier(model_path)
 

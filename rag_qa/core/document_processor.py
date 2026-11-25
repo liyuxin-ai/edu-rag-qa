@@ -174,7 +174,7 @@ def process_documents(directory_path, parent_chunk_size=conf.PARENT_CHUNK_SIZE,
 
 
 if __name__ == '__main__':
-    directory_path = '/Users/chan/projects/Itcast_qa_system/rag_qa/data/ai_data'
+    directory_path = 'rag_qa/data/ai_data'
     # documents = load_documents_from_directory(directory_path)
     # print(documents)
     child_chunks = process_documents(directory_path)

@@ -259,7 +259,7 @@ class BERTClassifier:
 # ==========================================
 if __name__ == "__main__":
     # 1. 配置模型路径 (请修改为你自己的本地路径或 HuggingFace 模型名)
-    MODEL_PATH = "/Users/chan/projects/models/bert-base-chinese"  # 例如："/path/to/bert-base-chinese"
+    MODEL_PATH = "./models/bert-base-chinese"  # 例如："/path/to/bert-base-chinese"
     OUTPUT_DIR = "./bert_classification_output"
 
     # 2. 配置数据路径 (请确保文件存在)

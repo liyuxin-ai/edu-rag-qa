@@ -114,7 +114,7 @@ class OCRDOCLoader(BaseLoader):
 
 
 if __name__ == '__main__':
-    docx_loader = OCRDOCLoader(filepath='/Users/chan/projects/Itcast_qa_system/rag_qa/data/samples/ocr_02.docx')
+    docx_loader = OCRDOCLoader(filepath='rag_qa/data/samples/ocr_02.docx')
     doc = docx_loader.load()
     for i in doc:
         print(i.page_content)

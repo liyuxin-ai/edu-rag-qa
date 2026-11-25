@@ -25,7 +25,7 @@ class AliTextSplitter(CharacterTextSplitter):
             text = re.sub("\n\n", "", text)
         p = pipeline(
             task="document-segmentation",
-            # model='/Users/chan/projects/Itcast_qa_system/rag_qa/models/nlp_bert_document-segmentation_chinese-base',
+            # model='rag_qa/models/nlp_bert_document-segmentation_chinese-base',
             model=conf.nlp_bert_doc_seg,
             device="cpu")
         result = p(documents=text)

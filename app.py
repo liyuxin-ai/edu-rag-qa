@@ -37,15 +37,15 @@ qa_system = IntegratedQASystem()
 GREETING_PATTERNS = [
     {
         "pattern": r"^(你好|您好|hi|hello)",
-        "response": "你好！我是黑马程序员，专注于为学生答疑解惑，很高兴为你服务！"
+        "response": "你好！我是 EduRAG 学习助手，专注解答课程与学习问题，很高兴为你服务！"
     },
     {
         "pattern": r"^(你是谁|您是谁|你叫什么|你的名字|who are you)",
-        "response": "我是黑马程序员，你的智能学习助手，致力于提供 IT 教育相关的解答！"
+        "response": "我是 EduRAG 学习助手，专注 IT 课程咨询与学习问题解答！"
     },
     {
         "pattern": r"^(在吗|在不在|有人吗)",
-        "response": "我在！我是黑马程序员，随时为你解答问题！"
+        "response": "我在！我是 EduRAG 学习助手，随时为你解答问题！"
     },
     {
         "pattern": r"^(干嘛呢|你在干嘛|做什么)",

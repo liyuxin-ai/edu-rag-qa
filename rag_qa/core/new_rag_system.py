@@ -19,10 +19,7 @@ class RAGSystem:
         #   获取 RAG 提示模板
         self.rag_prompt = RAGPrompts.rag_prompt()
         #   初始化查询分类器
-        self.query_classifier = QueryClassifier(
-            conf.bert_intent_cls
-            # model_path='/Users/chan/projects/Itcast_qa_system/rag_qa/core/bert_query_classifier',
-        )
+        self.query_classifier = QueryClassifier(conf.bert_intent_cls)
         #   初始化策略选择器
         self.strategy_selector = StrategySelector()
         # 最大 prompt 长度（字符）；固定指令 + 问题必须完整保留，剩余额度分配给 context 和 history
