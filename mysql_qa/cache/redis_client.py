@@ -6,6 +6,10 @@ import json
 from base import Config, logger
 
 
+# 答案缓存 TTL：7 天（秒），教学项目 FAQ 数据不常变，7 天后自动失效
+ANSWER_CACHE_TTL_SECONDS = 60 * 60 * 24 * 7
+
+
 class RedisClient:
     def __init__(self):
         # 初始化日志
@@ -26,46 +30,51 @@ class RedisClient:
             self.logger.error(f"Redis 连接失败: {e}")
             raise
 
-    def set_data(self, key, value):
-        # 存储数据到 Redis
+    # ---- BM25 语料缓存（列表 / 字典，需要 JSON 序列化） ----
+
+    def set_data(self, key, value, ttl=None):
+        """缓存结构化数据（BM25 语料等），JSON 序列化"""
         try:
-            # 存储 JSON 数据
-            self.client.set(key, json.dumps(value, ensure_ascii=False))  # 使用 json.dumps() 将数据转换为 JSON 格式
-            # 记录存储成功
+            payload = json.dumps(value, ensure_ascii=False)
+            if ttl:
+                self.client.setex(key, ttl, payload)
+            else:
+                self.client.set(key, payload)  # BM25 语料永久缓存，启动时重建
             self.logger.info(f"存储数据到 Redis: {key}")
         except redis.RedisError as e:
-            # 记录存储失败
             self.logger.error(f"Redis 存储失败: {e}")
 
     def get_data(self, key):
-        # 从 Redis 获取数据
+        """获取结构化缓存，JSON 反序列化"""
         try:
-            # 获取数据
             data = self.client.get(key)
-            # 返回解析后的 JSON 数据或 None
             return json.loads(data) if data else None
         except redis.RedisError as e:
-            # 记录获取失败
             self.logger.error(f"Redis 获取失败: {e}")
-            # 返回 None
             return None
 
-    def get_answer(self, query):
-        # 获取查询的缓存答案
+    # ---- FAQ 答案缓存（纯字符串，直接存取 + TTL） ----
+
+    def set_answer(self, query, answer):
+        """缓存 FAQ 命中的标准答案，原子写入 + TTL"""
         try:
-            # 从 Redis 获取答案
-            answer = self.client.get(f"answer:{query}")
-            if answer:
-                # 记录获取成功
+            key = f"answer:{query.strip()}"
+            self.client.setex(key, ANSWER_CACHE_TTL_SECONDS, answer)
+            self.logger.info(f"缓存答案: {key} (TTL={ANSWER_CACHE_TTL_SECONDS}s)")
+        except redis.RedisError as e:
+            self.logger.error(f"Redis 缓存答案失败: {e}")
+
+    def get_answer(self, query):
+        """获取 FAQ 缓存答案（纯字符串，与 set_answer 对称）"""
+        try:
+            key = f"answer:{query.strip()}"
+            answer = self.client.get(key)
+            if answer is not None:
                 self.logger.info(f"从 Redis 获取答案: {query}")
-                # 返回答案
                 return answer
-            # 返回 None
             return None
         except redis.RedisError as e:
-            # 记录查询失败
             self.logger.error(f"Redis 查询失败: {e}")
-            # 返回 None
             return None
 
 

@@ -194,7 +194,9 @@ class VectorStore:
             logger.info(f"已插入或更新 {len(data)} 个文档")
 
     # 定义方法，执行混合检索并重排序
-    def hybrid_search_with_rerank(self, query, k=conf.RETRIEVAL_K, source_filter=None):
+    # use_sparse / use_rerank 用于消融实验：关掉稀疏通道或重排序即为对照组
+    def hybrid_search_with_rerank(self, query, k=conf.RETRIEVAL_K, source_filter=None,
+                                  use_sparse=True, use_rerank=True):
         # 使用 BGE-M3 嵌入函数生成查询的嵌入
         query_embeddings = self.embedding_function([query])
         # 获取查询的稠密向量
@@ -240,51 +242,54 @@ class VectorStore:
             limit=k,
             expr=filter_expr
         )
-        # 创建稀疏向量搜索请求
-        sparse_request = AnnSearchRequest(
-            data=[sparse_query_vector],
-            anns_field="sparse_vector",
-            param={"metric_type": "IP", "params": {}},
-            limit=k,
-            expr=filter_expr
-        )
-
-        # 创建加权排序器，稀疏向量权重 0.7，稠密向量权重 1.0
-        ranker = WeightedRanker(1.0, 0.7)
-        # 执行混合搜索，返回 Top-K 结果
-        results = self.client.hybrid_search(
-            collection_name=self.collection_name,
-            reqs=[dense_request, sparse_request],
-            ranker=ranker,
-            limit=k,
-            output_fields=["text", "parent_id", "parent_content", "source", "timestamp"]
-        )[0]
-        # print(f'results--》{results}')
-        # print(f'results--》{type(results)}')
-        # print(f'results--》{len(results)}')
+        if use_sparse:
+            # 创建稀疏向量搜索请求
+            sparse_request = AnnSearchRequest(
+                data=[sparse_query_vector],
+                anns_field="sparse_vector",
+                param={"metric_type": "IP", "params": {}},
+                limit=k,
+                expr=filter_expr
+            )
+            # 创建加权排序器，稀疏向量权重 0.7，稠密向量权重 1.0
+            ranker = WeightedRanker(1.0, 0.7)
+            # 执行混合搜索，返回 Top-K 结果
+            results = self.client.hybrid_search(
+                collection_name=self.collection_name,
+                reqs=[dense_request, sparse_request],
+                ranker=ranker,
+                limit=k,
+                output_fields=["text", "parent_id", "parent_content", "source", "timestamp"]
+            )[0]
+        else:
+            # 仅稠密向量检索（消融对照组）
+            results = self.client.search(
+                collection_name=self.collection_name,
+                data=[dense_query_vector],
+                anns_field="dense_vector",
+                search_params={"metric_type": "IP", "params": {"nprobe": 10}},
+                limit=k,
+                filter=filter_expr or None,
+                output_fields=["text", "parent_id", "parent_content", "source", "timestamp"]
+            )[0]
         # 将上述搜索到的结果进行Document对象封装，便于查询使用
         sub_chunks = [self._doc_from_hit(hit["entity"]) for hit in results]
-        # print(f'sub_chunks--》{len(sub_chunks)}')
         # 从子块中提取去重的父文档
         parent_docs = self._get_unique_parent_docs(sub_chunks)
-        # print(f'parent_docs--》{parent_docs}')
-        # print(f'parent_docs--》{len(parent_docs)}')
-        # # 如果只有1个文档或者没有，直接返回跳过重排序
+        # 如果只有1个文档或者没有，直接返回跳过重排序
         if len(parent_docs) < 2:
             return parent_docs[:conf.CANDIDATE_M]
             # 如果有父文档，进行重排序
-        if parent_docs:
+        if parent_docs and use_rerank:
             # 创建查询与文档内容的配对列表
             pairs = [[query, doc.page_content] for doc in parent_docs]
             # 使用 BGE-Reranker 计算每个配对的得分
             scores = self.reranker.predict(pairs)
-            # print(f'scores--》{scores}')
             # 根据得分从高到低排序文档
             ranked_parent_docs = [doc for _, doc in sorted(zip(scores, parent_docs), reverse=True)]
-        # 如果没有父文档，返回空列表
-        # 如果没有父文档，返回空列表
+        # 没有父文档，或关掉重排序（消融对照组，保留融合得分顺序）
         else:
-            ranked_parent_docs = []
+            ranked_parent_docs = parent_docs
 
         # 返回前 m 个重排序后的文档
         return ranked_parent_docs[:conf.CANDIDATE_M]

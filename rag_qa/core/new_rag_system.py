@@ -25,8 +25,77 @@ class RAGSystem:
         )
         #   初始化策略选择器
         self.strategy_selector = StrategySelector()
-        # 最大 128K 字符
+        # 最大 prompt 长度（字符）；固定指令 + 问题必须完整保留，剩余额度分配给 context 和 history
         self.max_prompt_length = 4096
+
+    def _build_prompt_within_limit(self, context_docs, history_list, question, phone):
+        """按块粒度裁剪上下文和历史，保证 system 指令 + 问题完整，不做硬截断。
+
+        优先级：system 指令 > 问题 > context（按文档块砍尾）> history（砍旧留新）。
+        这样极端超长场景下，被切掉的是最不相关的文档块或最旧的历史，而不会把指令或问题切坏。
+        """
+        # 1. 算出模板的固定成本（context 和 history 都为空时）
+        fixed_prompt = self.rag_prompt.format(context="", history="", question=question, phone=phone)
+        fixed_cost = len(fixed_prompt)
+
+        if fixed_cost > self.max_prompt_length:
+            # 极端情况：固定部分本身就超长（问题极长），直接返回（让 LLM 截断问题）
+            logger.warning(
+                f"固定 prompt 长度 {fixed_cost} 已超过上限 {self.max_prompt_length}，"
+                f"问题本身可能过长"
+            )
+            return fixed_prompt
+
+        remaining = self.max_prompt_length - fixed_cost
+
+        # 2. 先装 context（RAG 核心，reranker 已按相关性排序，靠前的更重要）
+        context_parts = []
+        used = 0
+        for doc in context_docs:
+            chunk = doc.page_content
+            # 预留 "\n\n" 分隔符（第一个块不需要前缀）
+            separator = "\n\n" if context_parts else ""
+            cost = len(chunk) + len(separator)
+            if used + cost > remaining:
+                logger.info(
+                    f"context 额度用尽：已装 {len(context_parts)} 块，"
+                    f"剩余 {remaining - used} 字符"
+                )
+                break
+            context_parts.append(separator + chunk)
+            used += cost
+
+        context_text = "".join(context_parts)
+
+        # 3. 剩余额度装 history（砍旧留新，最近的轮次更重要）
+        history_text = ""
+        history_budget = remaining - used
+        if history_list and history_budget > 0:
+            # 从最后一轮往前装，直到超出额度
+            history_lines = []
+            history_used = 0
+            for h in reversed(history_list):
+                line = f"Q: {h['question']}\nA: {h['answer']}\n"
+                line_cost = len(line)
+                if history_used + line_cost > history_budget:
+                    break
+                history_lines.append(line)
+                history_used += line_cost
+            # 恢复正序（从旧到新）
+            history_text = "".join(reversed(history_lines))
+            if history_lines:
+                logger.info(
+                    f"history 装入 {len(history_lines)} 轮，"
+                    f"占用 {history_used}/{history_budget} 字符"
+                )
+
+        # 4. 最终拼 prompt（此时长度必定 <= max_prompt_length）
+        return self.rag_prompt.format(
+            context=context_text,
+            history=history_text,
+            question=question,
+            phone=phone,
+        )
 
     #   定义私有方法，使用假设文档进行检索（HyDE）
     def _retrieve_with_hyde(self, query):
@@ -216,47 +285,34 @@ class RAGSystem:
                     history = []
                     break
 
-        # 构造历史上下文
-        history_context = ""
-        if history:
-            history_context = "\n".join(
-                [f"Q: {h['question']}\nA: {h['answer']}" for h in history]
-            )
-            logger.info(f"使用对话历史: {history_context[:100]}...")
-
         # 判断查询类型，通用知识还是专业知识
         query_category = self.query_classifier.predict_category(query)
         logger.info(f"查询分类结果: {query_category} (查询: '{query}')")
 
-        # 准备上下文
+        # 准备上下文（保持列表形式，交给 _build_prompt_within_limit 按块裁剪）
         try:
             if query_category == "通用知识":
                 logger.info("查询为通用知识，直接调用 LLM")
-                context = ""
+                context_docs = []
             else:
                 logger.info("查询为专业咨询，执行 RAG 流程")
-                strategy = self.strategy_selector.select_strategy(query)  # 根据用户的query选择检索策略
-                # 根据检索策略，返回检索上下文
+                strategy = self.strategy_selector.select_strategy(query)
                 context_docs = self.retrieve_and_merge(
                     query, source_filter=source_filter, strategy=strategy
                 )
-                context = "\n\n".join([doc.page_content for doc in context_docs]) if context_docs else ""
                 logger.info(f"构建上下文完成，包含 {len(context_docs)} 个文档块")
 
-            # 构造提示
-            prompt_input = self.rag_prompt.format(
-                context=context,
-                history=history_context,
+            # 智能裁剪：system 指令 + 问题完整保留，context 按块砍尾、history 砍旧留新
+            prompt_input = self._build_prompt_within_limit(
+                context_docs=context_docs,
+                history_list=history or [],
                 question=query,
-                phone=conf.CUSTOMER_SERVICE_PHONE
+                phone=conf.CUSTOMER_SERVICE_PHONE,
             )
-
-            # 截断提示（若超长）
-            if len(prompt_input) > self.max_prompt_length:
-                logger.warning(f"提示长度 {len(prompt_input)} 超过 {self.max_prompt_length}，进行截断")
-                # 保留问题和近期历史，截断上下文或早期历史
-                prompt_input = prompt_input[:self.max_prompt_length]
-                logger.info(f"截断后提示长度: {len(prompt_input)}")
+            logger.info(
+                f"最终 prompt 长度: {len(prompt_input)} / {self.max_prompt_length}，"
+                f"context 块={len(context_docs)}，history 轮={len(history or [])}"
+            )
 
             processing_time = time.time() - start_time
             logger.info(f"检索时间 (耗时: {processing_time:.2f}s, 查询: '{query}')")
