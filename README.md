@@ -59,18 +59,18 @@ flowchart TD
 
 ## 技术栈
 
-| 层次 | 选型 |
-| --- | --- |
-| Web 框架 | FastAPI + Uvicorn + WebSocket |
-| 向量库 | Milvus 2.4（IVF_FLAT + SPARSE_INVERTED_INDEX 双索引） |
-| Embedding | BGE-M3（稠密 1024 维 + 稀疏权重） |
-| 重排序 | BGE-reranker-large（CrossEncoder） |
-| 意图分类 | bert-base-chinese 微调，PyTorch + Transformers |
-| 关键词检索 | rank-bm25 + jieba 分词 |
-| 缓存 / 结构化存储 | Redis 7 / MySQL 8 |
-| 大模型 | 阿里云百炼 Qwen-Plus（OpenAI 兼容接口） |
-| 文档解析 | PyMuPDF、python-docx、python-pptx、RapidOCR、OpenCV |
-| 评估 / 压测 | RAGAS、Locust |
+| 层次         | 选型                                                  |
+| ---------- | --------------------------------------------------- |
+| Web 框架     | FastAPI + Uvicorn + WebSocket                       |
+| 向量库        | Milvus 2.4（IVF\_FLAT + SPARSE\_INVERTED\_INDEX 双索引） |
+| Embedding  | BGE-M3（稠密 1024 维 + 稀疏权重）                            |
+| 重排序        | BGE-reranker-large（CrossEncoder）                    |
+| 意图分类       | bert-base-chinese 微调，PyTorch + Transformers         |
+| 关键词检索      | rank-bm25 + jieba 分词                                |
+| 缓存 / 结构化存储 | Redis 7 / MySQL 8                                   |
+| 大模型        | 阿里云百炼 Qwen-Plus（OpenAI 兼容接口）                        |
+| 文档解析       | PyMuPDF、python-docx、python-pptx、RapidOCR、OpenCV     |
+| 评估 / 压测    | RAGAS、Locust                                        |
 
 ## 目录结构
 
@@ -132,41 +132,57 @@ python app.py
 
 **模型准备**：以下权重体积较大，未纳入仓库，需自行下载后按目录放置。
 
-| 路径 | 用途 |
-| --- | --- |
-| `rag_qa/models/bge-m3/` | 稠密 + 稀疏向量编码 |
-| `rag_qa/models/bge-reranker-large/` | 重排序 |
-| `rag_qa/models/nlp_bert_document-segmentation_chinese-base/` | 语义切分（可选） |
-| `rag_qa/core/bert_query_classifier/` | 意图分类器；重训方法见 `rag_qa/core/query_classifier.py` 的 `__main__`，数据在 `rag_qa/classify_data/` |
+| 路径                                                           | 用途                                                                                     |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| `rag_qa/models/bge-m3/`                                      | 稠密 + 稀疏向量编码                                                                            |
+| `rag_qa/models/bge-reranker-large/`                          | 重排序                                                                                    |
+| `rag_qa/models/nlp_bert_document-segmentation_chinese-base/` | 语义切分（可选）                                                                               |
+| `rag_qa/core/bert_query_classifier/`                         | 意图分类器；重训方法见 `rag_qa/core/query_classifier.py` 的 `__main__`，数据在 `rag_qa/classify_data/` |
 
 ## 效果评估
 
-RAGAS 离线评估，30 条人工构造的课程咨询问题（`rag_qa/rag_assesment/rag_evaluate_data.json`）：
+评测集为 30 条人工构造的课程咨询问题（`rag_qa/rag_assesment/rag_evaluate_data.json`），全部指标在 CPU 环境下离线跑出。
 
-| 指标 | 得分 | 说明 |
-| --- | --- | --- |
-| faithfulness | 0.908 | 答案是否忠实于检索到的上下文 |
-| answer_relevancy | 0.868 | 答案与问题的相关程度 |
-| context_recall | 0.975 | 上下文是否覆盖了标准答案所需信息 |
-| context_precision | 1.000 | 见下方说明，区分度有限 |
+### 检索消融对比（5 组配置）
 
-**关于指标的诚实说明**：评测集仅 30 条，且 context_precision 恒为 1.0——因为评测样本的上下文基本就是标注答案所在段落，该指标在这个规模下没有区分度，不宜作为效果论据。faithfulness 与 answer_relevancy 更能反映实际表现。扩充评测集、做多档检索策略的消融对比是当前的首要 TODO。
+用 `rag_qa/rag_assesment/ablation_eval.py` 跑 5 组检索配置。检索侧用 Recall@N / MRR（`--retrieval-only`，零 LLM 成本），生成侧用 RAGAS 的 faithfulness 与 answer_relevancy：
+
+| 配置             | 说明                | Recall@3 | Recall@5 | MRR   | faithfulness | answer_relevancy |
+| -------------- | ----------------- | -------- | -------- | ----- | ------------ | ---------------- |
+| dense          | 仅稠密向量             | 46.7%    | 53.3%    | 0.380 | 0.794        | 0.739            |
+| dense_rerank   | 稠密 + BGE-reranker | 53.3%    | 53.3%    | 0.500 | 0.838        | 0.757            |
+| hybrid         | 稠密 + 稀疏混合         | 50.0%    | 53.3%    | 0.434 | 0.796        | 0.740            |
+| hybrid_rerank  | 混合 + 重排（现网基线）     | 53.3%    | 53.3%    | 0.500 | 0.817        | 0.762            |
+| full           | 混合 + 重排 + LLM 选策略 | 53.3%    | 53.3%    | 0.500 | 0.818        | 0.784            |
+
+结论：
+
+- **重排序是收益最大的组件**：MRR 0.380 → 0.500（+32%），faithfulness 0.794 → 0.838（+5.6%）。它提升的是"把正确块排到前面"的能力，而不是召回率。
+- **稀疏通道对生成质量几乎没有提升**（0.794 → 0.796），但 MRR 提升约 14% 且不增加延迟（Milvus 内融合），因此保留。
+- **LLM 策略选择把 answer_relevancy 提到全场最高的 0.784**，代价是每题多一次 LLM 调用、延迟增加 2–3 倍，故只在 query 被判定为语义模糊时启用。
+- hybrid_rerank 的 faithfulness 略低于 dense_rerank（0.817 vs 0.838），差异 0.021 在 30 条样本的噪声范围内，不作为结论。
+
+**口径说明**：该评测集上 context_precision 恒为 1.0（评测样本的上下文基本就是标注答案所在段落），没有区分度，因此检索质量改用 Recall@N / MRR 表达。dense 与 dense_rerank 曾测得 context_precision 0.591 / 0.726、context_recall 0.742 / 0.708；其余配置为控制 API 成本未重复测量。
+
+**已知偏差**：Recall@5 各配置均停在 53.3%，说明约半数问题的标注答案没有出现在召回块中——主要原因是标注答案与知识库原文措辞不一致（评测集标注未与知识库逐条对齐），而非检索完全失效。扩充并校准评测集是首要 TODO。
 
 **性能实测**（Locust，128 次请求，CPU 推理，无 GPU）：
 
-| 指标 | P50 | P95 |
-| --- | --- | --- |
+| 指标         | P50   | P95    |
+| ---------- | ----- | ------ |
 | 首 token 延迟 | 5.8 s | 13.1 s |
-| 完整响应耗时 | 115 s | 180 s |
+| 完整响应耗时     | 115 s | 180 s  |
 
 瓶颈明确在 CPU 上跑 BGE-M3 + reranker，以及每次查询额外一次"选策略"的 LLM 调用。换 GPU 或换更小的 reranker 是下一步优化方向。
 
 ## 已知限制
 
 - 服务端为单例对象，MySQL 连接与游标在多个请求间共享，高并发下需改为连接池。
-- `prompt_input[:4096]` 采用硬截断，极端超长场景会截掉问题本身，应改为按块优先级裁剪。
+- 检索结果未做置信度阈值拒答：召回为空或相关度过低时仍会调用 LLM，知识库外问题存在幻觉风险。
 - 策略选择依赖 LLM 输出格式，解析失败时回退到"直接检索"，稳定性弱于规则/小模型分流。
-- `allow_origins=["*"]` 与无鉴权的接口仅适用于演示环境。
+- `allow_origins=["*"]`、无鉴权与无限流，仅适用于演示环境。
+- `source_filter` 直接拼接进 Milvus 表达式，未做白名单校验，生产环境需限制可选值。
+- 项目暂无单元测试；FastAPI 服务本身未提供 Dockerfile（仅中间件用 compose 编排）。
 - BM25 阈值基于 softmax 归一化分数，其物理含义为分布概率而非相似度，阈值取值需通过扫参确定。
 
 ## 说明

@@ -1,0 +1,6 @@
+config,desc,n,faithfulness,answer_relevancy,context_precision,context_recall
+dense,仅稠密向量（无稀疏、无重排序）,30,0.794,0.739,0.591,0.742
+dense_rerank,稠密向量 + BGE-reranker,30,0.838,0.757,0.726,0.708
+hybrid,稠密 + 稀疏混合，无重排序,30,0.796,0.74,,
+hybrid_rerank,混合检索 + 重排序（现网基线）,30,0.817,0.762,,
+full,混合检索 + 重排序 + LLM 选策略,30,0.818,0.784,,
